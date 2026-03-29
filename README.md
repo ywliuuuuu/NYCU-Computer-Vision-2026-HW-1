@@ -36,11 +36,11 @@ pip install numpy matplotlib tqdm scikit-learn pandas
 Run EDA to visualize class distribution and image size distribution before training:
 
 ```bash
-python preprocessing.py --data\\\_root ./cv\\\_hw1\\\_data/data --mode eda --split train
-python preprocessing.py --data\\\_root ./cv\\\_hw1\\\_data/data --mode eda --split val
+python preprocessing.py --data_root ./cv_hw1_data/data --mode eda --split train
+python preprocessing.py --data_root ./cv_hw1_data/data --mode eda --split val
 ```
 
-Output plots are saved to `./eda\\\_outputs/`.
+Output plots are saved to `./eda_outputs/`.
 
 ### 2\. Training
 
@@ -54,11 +54,11 @@ python train.py --data\\\_root ./cv\\\_hw1\\\_data/data
 
 ```bash
 # Model A (seed 42)
-python train.py --data\_root ./cv\_hw1\_data/data --final\_mode --phase2\_epochs 25 --seed 42 --run\_name final\_A
+python train.py --data_root ./cv_hw1_data/data --final_mode --phase2_epochs 25 --seed 42 --run_name final_A
 
 
 # Model B (seed 7)
-python train.py --data\_root ./cv\_hw1\_data/data --final\_mode --phase2\_epochs 25 --seed 7 --run\_name final\_B 
+python train.py --data_root ./cv_hw1_data/data --final_mode --phase2_epochs 25 --seed 7 --run_name final_B 
 
 ```
 
@@ -69,13 +69,13 @@ Checkpoints are saved to `./checkpoints/`. Training curves are saved to `./plots
 **Single model with TTA:**
 
 ```bash
-python ensemble\\\_inference.py --data\\\_root ./cv\\\_hw1\\\_data/data --ckpts checkpoints/final\\\_A.pth --sizes 384 --tta --tta\\\_n 8 --out\\\_dir ./submission/single
+python ensemble_inference.py --data_root ./cv_hw1_data/data --ckpts checkpoints/final_A.pth --sizes 384 --tta --tta_n 8 --out_dir ./submission/single
 ```
 
 **Weighted ensemble (recommended):**
 
 ```bash
-python ensemble\\\_inference.py --data\\\_root ./cv\\\_hw1\\\_data/data --ckpts checkpoints/final\\\_A.pth checkpoints/final\\\_B.pth checkpoints/final\\\_resnet101.pth --sizes 384 384 256 --weights 0.4 0.4 0.2 --tta --tta\\\_n 8 --out\\\_dir ./submission/ensemble
+python ensemble_inference.py --data_root ./cv_hw1_data/data --ckpts checkpoints/final_A.pth checkpoints/final_B.pth checkpoints/final_resnet101.pth --sizes 384 384 256 --weights 0.4 0.4 0.2 --tta --tta_n 8 --out_dir ./submission/ensemble
 ```
 
 The output `submission.zip` (containing `prediction.csv`) is saved to the specified `--out\\\_dir`. Upload `submission.zip` directly to CodaBench.

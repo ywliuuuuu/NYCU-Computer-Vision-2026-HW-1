@@ -47,7 +47,7 @@ Output plots are saved to `./eda_outputs/`.
 **Normal mode** (with validation monitoring and early stopping):
 
 ```bash
-python train.py --data\\\_root ./cv\\\_hw1\\\_data/data
+python train.py --data_root ./cv_hw1_data/data
 ```
 
 **Final mode** (merge train + val, fixed epochs, no early stopping):

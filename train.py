@@ -11,6 +11,16 @@ Usage (final model, all data, no early stopping):
     python train.py --data_root ./data --final_mode --phase2_epochs 20
 """
 
+from preprocessing import get_dataloaders, get_dataloaders_final
+from torch.cuda.amp import autocast, GradScaler
+from torchvision.models import ResNet101_Weights
+import torchvision.models as models
+import torch.optim as optim
+import torch.nn as nn
+import torch
+from tqdm import tqdm
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 import os
 import argparse
 from collections import deque
@@ -18,18 +28,6 @@ from collections import deque
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend, safe for all environments
-import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix
-from tqdm import tqdm
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torchvision.models as models
-from torchvision.models import ResNet101_Weights
-from torch.cuda.amp import autocast, GradScaler
-
-from preprocessing import get_dataloaders, get_dataloaders_final
 
 
 # ---------------------------------------------------------------------------
@@ -61,10 +59,10 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducibility.")
     parser.add_argument("--run_name", type=str, default=None,
-                        help="Checkpoint filename stem (e.g. 'final_A' -> final_A.pth). "
-                             "Defaults to 'final_resnet101' or 'best_resnet101'.")
+                        help="Checkpoint filename stem")
     parser.add_argument("--plot_dir", type=str, default="./plots",
-                        help="Directory to save training curve and confusion matrix.")
+                        help="Directory to save training curve "
+                        "and confusion matrix.")
     return parser.parse_args()
 
 
@@ -84,26 +82,26 @@ def build_model(num_classes: int = 100) -> nn.Module:
 
 
 # ---------------------------------------------------------------------------
-# Mixup / CutMix 
+# Mixup / CutMix
 # ---------------------------------------------------------------------------
 def mixup_data(inputs, labels, alpha):
-    lam        = np.random.beta(alpha, alpha) if alpha > 0 else 1.0
+    lam = np.random.beta(alpha, alpha) if alpha > 0 else 1.0
     rand_index = torch.randperm(inputs.size(0), device=inputs.device)
-    mixed      = lam * inputs + (1 - lam) * inputs[rand_index]
+    mixed = lam * inputs + (1 - lam) * inputs[rand_index]
     return mixed, labels, labels[rand_index], lam
 
 
 def cutmix_data(inputs, labels, alpha):
-    lam         = np.random.beta(alpha, alpha) if alpha > 0 else 1.0
-    b, _, h, w  = inputs.size()
-    rand_index  = torch.randperm(b, device=inputs.device)
+    lam = np.random.beta(alpha, alpha) if alpha > 0 else 1.0
+    b, _, h, w = inputs.size()
+    rand_index = torch.randperm(b, device=inputs.device)
     cut_h, cut_w = int(h * np.sqrt(1 - lam)), int(w * np.sqrt(1 - lam))
-    cx, cy      = np.random.randint(w), np.random.randint(h)
-    x1, x2     = max(cx - cut_w // 2, 0), min(cx + cut_w // 2, w)
-    y1, y2     = max(cy - cut_h // 2, 0), min(cy + cut_h // 2, h)
-    mixed       = inputs.clone()
+    cx, cy = np.random.randint(w), np.random.randint(h)
+    x1, x2 = max(cx - cut_w // 2, 0), min(cx + cut_w // 2, w)
+    y1, y2 = max(cy - cut_h // 2, 0), min(cy + cut_h // 2, h)
+    mixed = inputs.clone()
     mixed[:, :, y1:y2, x1:x2] = inputs[rand_index, :, y1:y2, x1:x2]
-    lam         = 1 - (x2 - x1) * (y2 - y1) / (w * h)
+    lam = 1 - (x2 - x1) * (y2 - y1) / (w * h)
     return mixed, labels, labels[rand_index], lam
 
 
@@ -112,7 +110,7 @@ def mixup_criterion(criterion, outputs, la, lb, lam):
 
 
 # ---------------------------------------------------------------------------
-# Visualization 
+# Visualization
 # ---------------------------------------------------------------------------
 def plot_training_curve(history: dict, save_path: str):
     """Plot train/val loss and accuracy curves and save to file.
@@ -128,9 +126,19 @@ def plot_training_curve(history: dict, save_path: str):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     # ---- Loss ----
-    axes[0].plot(epochs, history["train_loss"], "o-", label="Train Loss", color="#2980b9")
+    axes[0].plot(
+        epochs,
+        history["train_loss"],
+        "o-",
+        label="Train Loss",
+        color="#2980b9")
     if has_val:
-        axes[0].plot(epochs, history["val_loss"], "s--", label="Val Loss", color="#e74c3c")
+        axes[0].plot(
+            epochs,
+            history["val_loss"],
+            "s--",
+            label="Val Loss",
+            color="#e74c3c")
     axes[0].set_xlabel("Epoch")
     axes[0].set_ylabel("Loss")
     axes[0].set_title("Training / Validation Loss")
@@ -138,9 +146,19 @@ def plot_training_curve(history: dict, save_path: str):
     axes[0].grid(True, alpha=0.3)
 
     # ---- Accuracy ----
-    axes[1].plot(epochs, history["train_acc"], "o-", label="Train Acc", color="#2980b9")
+    axes[1].plot(
+        epochs,
+        history["train_acc"],
+        "o-",
+        label="Train Acc",
+        color="#2980b9")
     if has_val:
-        axes[1].plot(epochs, history["val_acc"], "s--", label="Val Acc", color="#e74c3c")
+        axes[1].plot(
+            epochs,
+            history["val_acc"],
+            "s--",
+            label="Val Acc",
+            color="#e74c3c")
     axes[1].set_xlabel("Epoch")
     axes[1].set_ylabel("Accuracy")
     axes[1].set_title("Training / Validation Accuracy")
@@ -169,14 +187,17 @@ def plot_confusion_matrix(model, dataloader, device, num_classes: int,
     all_preds, all_labels = [], []
 
     with torch.no_grad():
-        for inputs, labels in tqdm(dataloader, desc="Confusion Matrix", leave=False):
+        for inputs, labels in tqdm(
+                dataloader, desc="Confusion Matrix", leave=False):
             inputs = inputs.to(device)
             outputs = model(inputs)
             preds = torch.argmax(outputs, dim=1).cpu().tolist()
             all_preds.extend(preds)
             all_labels.extend(labels.tolist())
 
-    cm = confusion_matrix(all_labels, all_preds, labels=list(range(num_classes)))
+    cm = confusion_matrix(
+        all_labels, all_preds, labels=list(
+            range(num_classes)))
 
     fig, ax = plt.subplots(figsize=(20, 18))
     im = ax.imshow(cm, interpolation="nearest", cmap="Blues")
@@ -184,7 +205,10 @@ def plot_confusion_matrix(model, dataloader, device, num_classes: int,
 
     ax.set_xlabel("Predicted Label", fontsize=12)
     ax.set_ylabel("True Label", fontsize=12)
-    ax.set_title("Confusion Matrix (100 Classes)", fontsize=14, fontweight="bold")
+    ax.set_title(
+        "Confusion Matrix (100 Classes)",
+        fontsize=14,
+        fontweight="bold")
 
     # Show tick labels every 10 classes to avoid clutter
     tick_step = 10
@@ -225,7 +249,7 @@ def train_one_epoch(
         optimizer.zero_grad()
         with autocast():
             outputs = model(inputs)
-            loss    = (
+            loss = (
                 mixup_criterion(criterion, outputs, la, lb, lam)
                 if mixed else criterion(outputs, labels)
             )
@@ -255,7 +279,7 @@ def validate(model, dataloader, criterion, device):
         for inputs, labels in tqdm(dataloader, desc="Validating", leave=False):
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-            loss    = criterion(outputs, labels)
+            loss = criterion(outputs, labels)
             running_loss += loss.item() * inputs.size(0)
             _, preds = torch.max(outputs, 1)
             corrects += torch.sum(preds == labels).item()
@@ -286,19 +310,19 @@ def main():
 
     # ---- DataLoaders ----
     if args.final_mode:
-        loaders     = get_dataloaders_final(
+        loaders = get_dataloaders_final(
             data_root=args.data_root,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             strong_aug=True,
         )
         train_loader = loaders["train"]
-        val_loader   = None
+        val_loader = None
         default_name = "final_resnet101"
-        save_path    = os.path.join(args.save_dir,
-                                    f"{args.run_name or default_name}.pth")
+        save_path = os.path.join(args.save_dir,
+                                 f"{args.run_name or default_name}.pth")
     else:
-        loaders      = get_dataloaders(
+        loaders = get_dataloaders(
             data_root=args.data_root,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
@@ -306,33 +330,38 @@ def main():
             strong_aug=True,
         )
         train_loader = loaders["train"]
-        val_loader   = loaders["val"]
+        val_loader = loaders["val"]
         default_name = "best_resnet101"
-        save_path    = os.path.join(args.save_dir,
-                                    f"{args.run_name or default_name}.pth")
+        save_path = os.path.join(args.save_dir,
+                                 f"{args.run_name or default_name}.pth")
 
     # ---- Model & Loss ----
-    model     = build_model(num_classes=100).to(device)
+    model = build_model(num_classes=100).to(device)
     scaler = GradScaler()
 
-    # ======== ✨ 在這裡加入計算參數量的代碼 ✨ ========
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"[Model] Total Parameters: {total_params:,} ({total_params / 1e6:.2f} M)")
-    
+    print(
+        f"[Model] Total Parameters: {total_params:,} "
+        f"({total_params / 1e6:.2f} M)"
+    )
+
     if total_params >= 100_000_000:
         print("[Warning] Model size exceeds 100M limits!")
     else:
-        print("[Info] Model size is within the 100M limit. Safe to proceed!")
-    # ==================================================
+        print("[Info] Model size is within the 100M limit.")
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    best_val_acc     = 0.0
+    best_val_acc = 0.0
     patience_counter = 0
     val_acc_window: deque = deque(maxlen=3)
 
     # History for training curve (Phase 2 only — Phase 1 is warm-up)
-    history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+    history = {
+        "train_loss": [],
+        "train_acc": [],
+        "val_loss": [],
+        "val_acc": []}
 
     # =========================================================
     # Phase 1: Warm-up — FC head only, backbone frozen
@@ -351,7 +380,8 @@ def main():
     for epoch in range(args.phase1_epochs):
         print(f"Epoch {epoch + 1}/{args.phase1_epochs}")
         train_loss, train_acc = train_one_epoch(
-            model, train_loader, criterion, optimizer1, device, scaler, use_mix=False
+            model, train_loader, criterion,
+            optimizer1, device, scaler, use_mix=False
         )
         if val_loader:
             val_loss, val_acc = validate(model, val_loader, criterion, device)
@@ -389,7 +419,10 @@ def main():
 
     for epoch in range(args.phase2_epochs):
         current_lr = scheduler.get_last_lr()[0]
-        print(f"Epoch {epoch + 1}/{args.phase2_epochs}  (LR: {current_lr:.6f})")
+        print(
+            f"Epoch {epoch + 1}/{args.phase2_epochs}  "
+            f"(LR: {current_lr:.6f})"
+        )
 
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, optimizer2, device, scaler,
@@ -415,17 +448,26 @@ def main():
             history["val_acc"].append(val_acc)
 
             if val_acc > best_val_acc:
-                print(f" => Val acc improved ({best_val_acc:.4f} → {val_acc:.4f}). Saving...")
+                print(
+                    f" => Val acc improved "
+                    f"({best_val_acc:.4f} → {val_acc:.4f}). Saving..."
+                )
                 best_val_acc = val_acc
                 torch.save(model.state_dict(), save_path)
                 patience_counter = 0
             else:
                 patience_counter += 1
-                print(f" => EarlyStopping counter: {patience_counter} / {args.patience}")
+                print(
+                    f" => EarlyStopping counter: "
+                    f"{patience_counter} / {args.patience}"
+                )
 
             val_acc_window.append(val_acc)
             if len(val_acc_window) == 3:
-                print(f"    Rolling-avg val acc (last 3): {sum(val_acc_window)/3:.4f}")
+                print(
+                    f"    Rolling-avg val acc (last 3): "
+                    f"{sum(val_acc_window) / 3:.4f}"
+                )
 
             if patience_counter >= args.patience:
                 print("\n[Early Stopping] Triggered!")
@@ -444,7 +486,8 @@ def main():
     # =========================================================
     # Post-training: save plots
     # =========================================================
-    run_tag = args.run_name or ("final_resnet101" if args.final_mode else "best_resnet101")
+    run_tag = args.run_name or (
+        "final_resnet101" if args.final_mode else "best_resnet101")
 
     # Training curve
     plot_training_curve(
@@ -457,14 +500,19 @@ def main():
         plot_confusion_matrix(
             model, val_loader, device,
             num_classes=100,
-            save_path=os.path.join(args.plot_dir, f"{run_tag}_confusion_matrix.png"),
+            save_path=os.path.join(
+                args.plot_dir, f"{run_tag}_confusion_matrix.png"),
         )
     else:
-        print("[Plot] Final mode — no val_loader available for confusion matrix. "
-              "Re-run without --final_mode to generate one, or use inference.py on val set.")
+        print(
+            "[Plot] Final mode — "
+            "no val_loader available for confusion matrix. "
+            "Re-run without --final_mode to generate one, "
+            "or use inference.py on val set."
+        )
 
     if args.final_mode:
-        print(f"\nFinal Training Complete.")
+        print("\nFinal Training Complete.")
         print(f"Final model saved → {save_path}")
     else:
         print(f"\nTraining Complete.  Best Val Acc: {best_val_acc:.4f}")

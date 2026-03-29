@@ -22,7 +22,8 @@ import matplotlib.patches as mpatches
 from PIL import Image
 
 import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, ConcatDataset
+from torch.utils.data import (Dataset, DataLoader,
+                              WeightedRandomSampler, ConcatDataset)
 from torchvision import transforms
 
 
@@ -30,8 +31,8 @@ from torchvision import transforms
 # Constants
 # ---------------------------------------------------------------------------
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD  = [0.229, 0.224, 0.225]
-IMAGE_SIZE    = 384
+IMAGENET_STD = [0.229, 0.224, 0.225]
+IMAGE_SIZE = 384
 
 
 # ---------------------------------------------------------------------------
@@ -50,11 +51,11 @@ class ImageFolderDataset(Dataset):
     """
 
     def __init__(self, root: str, transform=None, is_test: bool = False):
-        self.root      = Path(root)
+        self.root = Path(root)
         self.transform = transform
-        self.is_test   = is_test
-        self.samples   = []
-        self.classes   = []
+        self.is_test = is_test
+        self.samples = []
+        self.classes = []
 
         if is_test:
             self._load_test()
@@ -70,12 +71,14 @@ class ImageFolderDataset(Dataset):
         for class_dir in class_dirs:
             label = int(class_dir.name)
             for img_path in sorted(class_dir.glob("*")):
-                if img_path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}:
+                if img_path.suffix.lower() in {
+                        ".jpg", ".jpeg", ".png", ".bmp", ".webp"}:
                     self.samples.append((img_path, label))
 
     def _load_test(self):
         for img_path in sorted(self.root.glob("*")):
-            if img_path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}:
+            if img_path.suffix.lower() in {
+                    ".jpg", ".jpeg", ".png", ".bmp", ".webp"}:
                 self.samples.append((img_path, img_path.name))
 
     def __len__(self):
@@ -97,21 +100,25 @@ def get_train_transform(strong: bool = False) -> transforms.Compose:
     base = [
         transforms.RandomResizedCrop(IMAGE_SIZE, scale=(0.4, 1.0)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+        transforms.ColorJitter(
+            brightness=0.4,
+            contrast=0.4,
+            saturation=0.4,
+            hue=0.1),
         transforms.RandomRotation(degrees=15),
     ]
-    
+
     if strong:
         base += [
             transforms.RandomGrayscale(p=0.1),
             transforms.RandomPerspective(distortion_scale=0.3, p=0.3),
         ]
-        
+
     base += [
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ]
-    
+
     if strong:
         base.append(transforms.RandomErasing(p=0.3))
 
@@ -129,12 +136,12 @@ def get_val_transform() -> transforms.Compose:
 
 
 # ---------------------------------------------------------------------------
-# WeightedRandomSampler 
+# WeightedRandomSampler
 # ---------------------------------------------------------------------------
 def get_class_weights(dataset) -> torch.Tensor:
     """Compute per-class weights (inverse frequency) for loss reweighting."""
-    labels  = [label for _, label in dataset.samples]
-    count   = Counter(labels)
+    labels = [label for _, label in dataset.samples]
+    count = Counter(labels)
     num_cls = len(count)
     weights = torch.zeros(num_cls)
     for cls, cnt in count.items():
@@ -144,8 +151,8 @@ def get_class_weights(dataset) -> torch.Tensor:
 
 def get_sampler(dataset) -> WeightedRandomSampler:
     """Build a WeightedRandomSampler so every class is sampled equally."""
-    labels         = [label for _, label in dataset.samples]
-    count          = Counter(labels)
+    labels = [label for _, label in dataset.samples]
+    count = Counter(labels)
     sample_weights = [1.0 / count[label] for label in labels]
     return WeightedRandomSampler(
         weights=sample_weights,
@@ -159,7 +166,7 @@ def _get_combined_sampler(datasets: list) -> WeightedRandomSampler:
     all_labels = []
     for ds in datasets:
         all_labels.extend([label for _, label in ds.samples])
-    count          = Counter(all_labels)
+    count = Counter(all_labels)
     sample_weights = [1.0 / count[label] for label in all_labels]
     return WeightedRandomSampler(
         weights=sample_weights,
@@ -178,12 +185,19 @@ def get_dataloaders(
     use_sampler: bool = True,
     strong_aug: bool = False,
 ) -> dict:
-    """Build train / val / test DataLoaders (uses separate train & val folders)."""
+    """
+    Build train / val / test DataLoaders
+    (uses separate train & val folders).
+    """
     root = Path(data_root)
 
-    train_ds = ImageFolderDataset(root / "train", transform=get_train_transform(strong_aug))
-    val_ds   = ImageFolderDataset(root / "val",   transform=get_val_transform())
-    test_ds  = ImageFolderDataset(root / "test",  transform=get_val_transform(), is_test=True)
+    train_ds = ImageFolderDataset(root / "train",
+                                  transform=get_train_transform(strong_aug))
+    val_ds = ImageFolderDataset(root / "val", transform=get_val_transform())
+    test_ds = ImageFolderDataset(
+        root / "test",
+        transform=get_val_transform(),
+        is_test=True)
 
     if use_sampler:
         train_loader = DataLoader(
@@ -206,7 +220,10 @@ def get_dataloaders(
         num_workers=num_workers, pin_memory=True,
     )
 
-    print(f"[Dataset] Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}")
+    print(
+        f"[Dataset] Train: {len(train_ds)} | "
+        f"Val: {len(val_ds)} | "
+        f"Test: {len(test_ds)}")
     return {"train": train_loader, "val": val_loader, "test": test_loader}
 
 
@@ -227,12 +244,17 @@ def get_dataloaders_final(
     """
     root = Path(data_root)
 
-    train_ds = ImageFolderDataset(root / "train", transform=get_train_transform(strong_aug))
-    val_ds   = ImageFolderDataset(root / "val",   transform=get_train_transform(strong_aug))
-    test_ds  = ImageFolderDataset(root / "test",  transform=get_val_transform(), is_test=True)
+    train_ds = ImageFolderDataset(root / "train",
+                                  transform=get_train_transform(strong_aug))
+    val_ds = ImageFolderDataset(root / "val",
+                                transform=get_train_transform(strong_aug))
+    test_ds = ImageFolderDataset(
+        root / "test",
+        transform=get_val_transform(),
+        is_test=True)
 
     combined_ds = ConcatDataset([train_ds, val_ds])
-    sampler     = _get_combined_sampler([train_ds, val_ds])
+    sampler = _get_combined_sampler([train_ds, val_ds])
 
     train_loader = DataLoader(
         combined_ds, batch_size=batch_size,
@@ -250,7 +272,7 @@ def get_dataloaders_final(
 
 
 # ---------------------------------------------------------------------------
-# EDA 
+# EDA
 # ---------------------------------------------------------------------------
 def analyze_class_distribution(root: str, split: str = "train") -> dict:
     split_dir = Path(root) / split
@@ -259,16 +281,24 @@ def analyze_class_distribution(root: str, split: str = "train") -> dict:
         if class_dir.is_dir():
             n = sum(
                 1 for f in class_dir.glob("*")
-                if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+                if f.suffix.lower() in {".jpg",
+                                        ".jpeg",
+                                        ".png",
+                                        ".bmp",
+                                        ".webp"}
             )
             counts[int(class_dir.name)] = n
     return counts
 
 
-def analyze_image_sizes(root: str, split: str = "train", sample_n: int = 500) -> list:
+def analyze_image_sizes(root: str, split: str = "train",
+                        sample_n: int = 500) -> list:
     split_dir = Path(root) / split
-    images = list(split_dir.rglob("*.jpg")) + list(split_dir.rglob("*.jpeg")) + \
-             list(split_dir.rglob("*.png"))
+    images = (
+        list(split_dir.rglob("*.jpg"))
+        + list(split_dir.rglob("*.jpeg"))
+        + list(split_dir.rglob("*.png"))
+    )
     np.random.shuffle(images)
     sizes = []
     for img_path in images[:sample_n]:
@@ -280,9 +310,10 @@ def analyze_image_sizes(root: str, split: str = "train", sample_n: int = 500) ->
     return sizes
 
 
-def plot_class_distribution(counts: dict, split: str = "train", save_path: str = None):
-    classes  = list(counts.keys())
-    values   = list(counts.values())
+def plot_class_distribution(
+        counts: dict, split: str = "train", save_path: str = None):
+    classes = list(counts.keys())
+    values = list(counts.values())
     mean_val = np.mean(values)
 
     colors = []
@@ -304,7 +335,7 @@ def plot_class_distribution(counts: dict, split: str = "train", save_path: str =
     ax.set_xlabel("Class ID")
     ax.set_ylabel("Number of Images")
     ax.set_title(f"Class Distribution — {split} set", fontweight="bold")
-    red_p   = mpatches.Patch(color="#e74c3c", label="< 50% of mean (severe)")
+    red_p = mpatches.Patch(color="#e74c3c", label="< 50% of mean (severe)")
     amber_p = mpatches.Patch(color="#f39c12", label="50–80% of mean")
     green_p = mpatches.Patch(color="#2ecc71", label=">= 80% of mean")
     ax.legend(handles=[red_p, amber_p, green_p], fontsize=9)
@@ -312,8 +343,8 @@ def plot_class_distribution(counts: dict, split: str = "train", save_path: str =
     ax2 = axes[1]
     sorted_items = sorted(counts.items(), key=lambda x: x[1])
     s_classes = [str(c) for c, _ in sorted_items]
-    s_values  = [v for _, v in sorted_items]
-    s_colors  = []
+    s_values = [v for _, v in sorted_items]
+    s_colors = []
     for v in s_values:
         ratio = v / mean_val
         if ratio < 0.5:
@@ -341,12 +372,17 @@ def plot_class_distribution(counts: dict, split: str = "train", save_path: str =
 
 
 def plot_size_distribution(sizes: list, save_path: str = None):
-    widths  = [s[0] for s in sizes]
+    widths = [s[0] for s in sizes]
     heights = [s[1] for s in sizes]
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     axes[0].scatter(widths, heights, alpha=0.3, s=10, color="#8e44ad")
-    axes[0].axvline(224, color="red", linestyle="--", linewidth=1, label="224px")
+    axes[0].axvline(
+        224,
+        color="red",
+        linestyle="--",
+        linewidth=1,
+        label="224px")
     axes[0].axhline(224, color="red", linestyle="--", linewidth=1)
     axes[0].set_title("Image W × H Scatter")
     axes[0].legend()
@@ -373,15 +409,19 @@ def plot_size_distribution(sizes: list, save_path: str = None):
 
 
 def print_summary(counts: dict, split: str = "train"):
-    values  = list(counts.values())
-    mean_v  = np.mean(values)
+    values = list(counts.values())
+    mean_v = np.mean(values)
     print(f"\n{'='*50}")
     print(f"  EDA Summary — {split} set")
     print(f"{'='*50}")
     print(f"  Total images   : {sum(values)}")
     print(f"  Num classes    : {len(counts)}")
-    print(f"  Min per class  : {min(values)}  (class {min(counts, key=counts.get)})")
-    print(f"  Max per class  : {max(values)}  (class {max(counts, key=counts.get)})")
+    print(
+        f"  Min per class  : {min(values)}  "
+        f"(class {min(counts, key=counts.get)})")
+    print(
+        f"  Max per class  : {max(values)}  "
+        f"(class {max(counts, key=counts.get)})")
     print(f"  Mean per class : {mean_v:.1f}")
     print(f"  Std per class  : {np.std(values):.1f}")
     severe = [c for c, v in counts.items() if v / mean_v < 0.5]
@@ -409,29 +449,40 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
 
     if args.mode == "eda":
-        print(f"\n[EDA] Analysing '{args.split}' split under: {args.data_root}")
+        print(
+            f"\n[EDA] Analysing '{args.split}' split under: {args.data_root}")
         counts = analyze_class_distribution(args.data_root, args.split)
         print_summary(counts, args.split)
         plot_class_distribution(
             counts, split=args.split,
-            save_path=os.path.join(args.save_dir, f"{args.split}_class_distribution.png"),
+            save_path=os.path.join(
+                args.save_dir,
+                f"{args.split}_class_distribution.png"),
         )
         print(f"[EDA] Sampling {args.sample_n} images for size analysis …")
         sizes = analyze_image_sizes(args.data_root, args.split, args.sample_n)
         plot_size_distribution(
             sizes,
-            save_path=os.path.join(args.save_dir, f"{args.split}_size_distribution.png"),
+            save_path=os.path.join(
+                args.save_dir,
+                f"{args.split}_size_distribution.png"),
         )
         print("[EDA] Done. Check the eda_outputs/ folder for plots.\n")
 
     elif args.mode == "test_loader":
         loaders = get_dataloaders(args.data_root, batch_size=32, num_workers=0)
         imgs, labels = next(iter(loaders["train"]))
-        print(f"[Loader] Train batch — images: {imgs.shape}, labels: {labels.shape}")
+        print(
+            f"[Loader] Train batch — "
+            f"images: {imgs.shape}, labels: {labels.shape}")
         imgs, labels = next(iter(loaders["val"]))
-        print(f"[Loader] Val   batch — images: {imgs.shape}, labels: {labels.shape}")
+        print(
+            f"[Loader] Val   batch — "
+            f"images: {imgs.shape}, labels: {labels.shape}")
         imgs, fnames = next(iter(loaders["test"]))
-        print(f"[Loader] Test  batch — images: {imgs.shape}, filenames[0]: {fnames[0]}")
+        print(
+            f"[Loader] Test  batch — "
+            f"images: {imgs.shape}, filenames[0]: {fnames[0]}")
 
 
 if __name__ == "__main__":

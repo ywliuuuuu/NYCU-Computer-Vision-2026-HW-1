@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import ResNet50_Weights, ResNet101_Weights
+# from torchvision.models import ResNet50_Weights, ResNet101_Weights
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -27,7 +27,7 @@ from preprocessing import ImageFolderDataset
 # Constants
 # ---------------------------------------------------------------------------
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD  = [0.229, 0.224, 0.225]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="HW1 Weighted Ensemble Inference with TTA"
     )
-    parser.add_argument("--data_root",   type=str, default="./data")
+    parser.add_argument("--data_root", type=str, default="./data")
     parser.add_argument(
         "--ckpts", nargs="+", required=True,
         help="Checkpoint paths. e.g. --ckpts a.pth b.pth c.pth",
@@ -52,9 +52,9 @@ def parse_args():
         help="Ensemble weight per checkpoint. Defaults to equal weights. "
              "Will be normalised to sum=1.",
     )
-    parser.add_argument("--batch_size",  type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--tta",   action="store_true",
+    parser.add_argument("--tta", action="store_true",
                         help="Enable Test Time Augmentation")
     parser.add_argument("--tta_n", type=int, default=8,
                         help="Number of TTA passes (default: 8)")
@@ -66,7 +66,7 @@ def parse_args():
 # Model loader — auto-detects ResNet-50 vs ResNet-101
 # ---------------------------------------------------------------------------
 def load_model(ckpt_path: str, num_classes: int = 100) -> nn.Module:
-    state       = torch.load(ckpt_path, map_location="cpu")
+    state = torch.load(ckpt_path, map_location="cpu")
     total_params = sum(p.numel() for p in state.values())
 
     if total_params > 35_000_000:
@@ -100,8 +100,8 @@ def get_tta_transforms(n: int, image_size: int) -> list:
       6: centre crop + colour jitter
       7: centre crop + colour jitter + H-flip
     """
-    norm       = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
-    resize_to  = int(image_size * 256 / 224)
+    norm = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+    resize_to = int(image_size * 256 / 224)
 
     pool = [
         # 0
@@ -161,9 +161,9 @@ def get_tta_transforms(n: int, image_size: int) -> list:
 def run_tta(model, data_root, batch_size, num_workers,
             device, tta_transforms) -> tuple:
     """Run all TTA passes and return averaged softmax probs + filenames."""
-    probs_sum  = None
+    probs_sum = None
     fnames_ref = None
-    n          = len(tta_transforms)
+    n = len(tta_transforms)
 
     for i, tfm in enumerate(tta_transforms):
         ds = ImageFolderDataset(
@@ -177,14 +177,15 @@ def run_tta(model, data_root, batch_size, num_workers,
         )
 
         pass_probs, pass_fnames = [], []
-        for images, fnames in tqdm(loader, desc=f"  TTA {i+1}/{n}", leave=False):
+        for images, fnames in tqdm(
+                loader, desc=f"  TTA {i+1}/{n}", leave=False):
             logits = model(images.to(device))
             pass_probs.append(F.softmax(logits, dim=1).cpu())
             pass_fnames.extend(fnames)
 
         pass_probs = torch.cat(pass_probs, dim=0)
         if probs_sum is None:
-            probs_sum  = pass_probs
+            probs_sum = pass_probs
             fnames_ref = pass_fnames
         else:
             probs_sum += pass_probs
@@ -215,7 +216,7 @@ def save_submission(fnames: list, preds: list, out_dir: str):
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    args    = parse_args()
+    args = parse_args()
     n_ckpts = len(args.ckpts)
 
     # ---- Validate & normalise sizes ----
@@ -238,26 +239,28 @@ def main():
                 f"--weights count ({len(args.weights)}) must match "
                 f"--ckpts count ({n_ckpts})"
             )
-        total   = sum(args.weights)
+        total = sum(args.weights)
         weights = [w / total for w in args.weights]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[Info] Device : {device}")
-    print(f"[Info] TTA    : {'ON  (n=' + str(args.tta_n) + ')' if args.tta else 'OFF'}")
+    status = f"ON (n={args.tta_n})" if args.tta else "OFF"
+    print(f"[Info] TTA    : {status}")
     print(f"[Info] Models : {n_ckpts}")
     for ck, sz, w in zip(args.ckpts, sizes, weights):
         print(f"         size={sz}  weight={w:.3f}  {ck}")
 
     # ---- Run each model ----
     ensemble_probs = None
-    fnames_ref     = None
+    fnames_ref = None
 
     for ckpt_path, image_size, weight in zip(args.ckpts, sizes, weights):
-        print(f"\n[Model] {ckpt_path}  (size={image_size}, weight={weight:.3f})")
+        print(
+            f"\n[Model] {ckpt_path}  (size={image_size}, weight={weight:.3f})")
         model = load_model(ckpt_path).to(device)
 
-        n_passes     = args.tta_n if args.tta else 1
-        tta_tfms     = get_tta_transforms(n_passes, image_size)
+        n_passes = args.tta_n if args.tta else 1
+        tta_tfms = get_tta_transforms(n_passes, image_size)
         fnames, probs = run_tta(
             model, args.data_root, args.batch_size,
             args.num_workers, device, tta_tfms,
@@ -265,7 +268,7 @@ def main():
 
         if ensemble_probs is None:
             ensemble_probs = probs * weight
-            fnames_ref     = fnames
+            fnames_ref = fnames
         else:
             ensemble_probs += probs * weight
 

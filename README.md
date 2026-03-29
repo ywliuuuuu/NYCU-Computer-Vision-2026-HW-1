@@ -84,5 +84,5 @@ The output `submission.zip` (containing `prediction.csv`) is saved to the specif
 
 ### Leaderboard
 
-!\[Leaderboard Screenshot](assets/leaderboard.png)
+![Leaderboard Screenshot](assets/leaderboard.png)
 

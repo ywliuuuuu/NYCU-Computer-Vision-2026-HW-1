@@ -78,7 +78,7 @@ python ensemble_inference.py --data_root ./cv_hw1_data/data --ckpts checkpoints/
 python ensemble_inference.py --data_root ./cv_hw1_data/data --ckpts checkpoints/final_A.pth checkpoints/final_B.pth checkpoints/final_resnet101.pth --sizes 384 384 256 --weights 0.4 0.4 0.2 --tta --tta_n 8 --out_dir ./submission/ensemble
 ```
 
-The output `submission.zip` (containing `prediction.csv`) is saved to the specified `--out\\\_dir`. Upload `submission.zip` directly to CodaBench.
+The output `submission.zip` (containing `prediction.csv`) is saved to the specified `--out_dir`. Upload `submission.zip` directly to CodaBench.
 
 ## Performance Snapshot
 
